@@ -1,0 +1,222 @@
+    properties (Access = private)
+        arduino;
+        isReading = false; threshold_v = 1;  moistureLine; thresholdLine;  startTime;  
+        % 
+        % dataBuffer; bufferSize = 10; dataTimer; 
+    end
+    
+    % 
+    % methods (Access = private)
+    %    function collectData(app)
+    % newData = readData();
+    % app.dataBuffer = circshift(app.dataBuffer, -1); 
+    % app.dataBuffer(end) = newData; 
+    %    end
+    % end
+    
+
+    % Callbacks that handle component events
+    methods (Access = private)
+
+        % Code that executes after component creation
+        function startupFcn(app)
+            app.arduino = arduino();
+            %
+            % app.dataBuffer = zeros(app.bufferSize, 1);
+            % app.dataTimer = timer('ExecutionMode', 'fixedRate', 'Period', 1, 'TimerFcn', @(~,~)app.collectData);
+            % start(app.dataTimer);
+            configurePin(app.arduino, 'D4', 'DigitalOutput');
+
+            app.moistureLine = animatedline(app.UIAxes, 'Color', 'm','LineStyle','-','LineWidth',0.5);
+            app.thresholdLine = animatedline(app.UIAxes, 'Color', 'k','LineStyle','-','LineWidth',0.5); 
+            legend(app.UIAxes,'Moisture Percentage','Treshold Line');
+            app.SoilIsWateringLamp.Color= [0 0 0];
+        end
+
+        % Button pushed function: PlotButton
+        function PlotButtonPushed(app, event)
+
+            app.startTime = datetime('now');
+
+            if ~isa(app.arduino, 'arduino')
+                app.arduino = arduino();
+            end
+
+            if ~app.isReading
+
+                app.isReading = true;
+                while app.isReading
+                  analogValue = readVoltage(app.arduino, 'A1');
+                  moisturePercentage = interp1([0,5], [100,0], analogValue);
+
+                    % 
+                    % if ~isnumeric(moisturePercentage) || isnan(moisturePercentage) || moisturePercentage < 0 || moisturePercentage > 100
+                    %     continue; 
+                    %  end
+                    
+
+                    currentTime = datetime('now');
+                    elapsedSeconds = seconds(currentTime - app.startTime); 
+      
+                    addpoints(app.moistureLine, elapsedSeconds, moisturePercentage);
+
+                   addpoints(app.thresholdLine, elapsedSeconds, app.threshold_v);
+                   
+                    if moisturePercentage > app.threshold_v
+                        writeDigitalPin(app.arduino, 'D4', 0); 
+                         app.SoilIsWateringLamp.Color=[0 0 0];
+                    else
+                        writeDigitalPin(app.arduino, 'D4', 1); 
+                         app.SoilIsWateringLamp.Color=[[0.47,0.67,0.19]];
+                    end
+                end
+            end
+
+
+        end
+
+        % Button pushed function: ExitButton
+        function ExitButtonPushed(app, event)
+            delete(app);
+        end
+
+        % Value changed function: timeValue
+        function timeValueValueChanged(app, event)
+            duration = app.timeValue.Value; 
+            app.UIAxes.XLim = [0 duration];
+            app.UIAxes.XTick = 0:duration/10:duration;      
+        end
+
+        % Value changed function: ThresholdDropDown
+        function ThresholdDropDownValueChanged(app, event)
+            app.threshold_v = str2double(app.ThresholdDropDown.Value);            
+        end
+
+        % Button pushed function: SaveButton
+        function SaveButtonPushed(app, event)
+            filetype = app.FileTypeDropDown.Value;
+            fileName = fullfile(getenv('USERPROFILE'), 'Desktop', 'Figure');
+
+            switch filetype
+                case '.jpg'
+                    exportgraphics(app.UIAxes, [fileName '.jpg']);
+                case '.png'
+                    exportgraphics(app.UIAxes, [fileName '.png']);
+                case '.fig'
+                    exportgraphics(app.UIAxes, [fileName '.fig']);
+
+            end
+
+        end
+
+        % Selection changed function: ColorButtonGroup
+        function ColorButtonGroupSelectionChanged(app, event)
+            moistcolor = app.ColorButtonGroup.SelectedObject;
+            
+             switch moistcolor.Text
+                case 'Red'
+                    m_color = 'r';
+                case 'Blue'
+                    m_color = 'b';
+                case 'Green'
+                    m_color = 'g';
+                
+            end
+                app.moistureLine.Color=m_color;
+        end
+
+        % Selection changed function: ThicknessButtonGroup
+        function ThicknessButtonGroupSelectionChanged(app, event)
+            moistthickness = app.ThicknessButtonGroup.SelectedObject;
+
+            switch moistthickness.Text        
+                case 'Thin'
+                m_width= 0.3;
+                case 'Medium'
+                    m_width=2;
+                case 'Thick'
+                    m_width=4;
+            end
+       
+            app.moistureLine.LineWidth=m_width;           
+        end
+
+        % Selection changed function: LineStyleButtonGroup
+        function LineStyleButtonGroupSelectionChanged(app, event)
+            moiststyle = app.LineStyleButtonGroup.SelectedObject;
+            
+            switch moiststyle.Text
+                case 'Dashed Dotted Line'
+                    m_style= '-.';
+                case 'Dashed Line'
+                    m_style='--';
+                case 'Dotted Line'
+                    m_style= ':';
+            end
+            app.moistureLine.LineStyle=m_style;
+        end
+
+        % Selection changed function: ColorButtonGroup_2
+        function ColorButtonGroup_2SelectionChanged(app, event)
+            tresholdcolor = app.ColorButtonGroup_2.SelectedObject;
+            
+             switch tresholdcolor.Text
+                case 'Red'
+                    t_color = 'r';
+                case 'Blue'
+                    t_color = 'b';
+                case 'Green'
+                    t_color = 'g';
+                
+            end
+                app.thresholdLine.Color=t_color;
+        end
+
+        % Value changed function: FileTypeDropDown
+        function FileTypeDropDownValueChanged(app, event)
+            filetype = app.FileTypeDropDown.Value;
+            
+        end
+
+        % Value changed function: Switch
+        function SwitchValueChanged(app, event)
+            gridState = app.Switch.Value;
+       
+            if strcmp(gridState, 'Grid On')
+                grid(app.UIAxes, 'on');
+            else if  strcmp(gridState, 'Grid Off')
+                grid(app.UIAxes, 'off');
+            end
+            end
+
+        end
+
+        % Selection changed function: ThicknessButtonGroup_2
+        function ThicknessButtonGroup_2SelectionChanged(app, event)
+            tresholdthickness = app.ThicknessButtonGroup_2.SelectedObject;
+            
+             switch tresholdthickness.Text        
+                case 'Thin'
+                t_width= 0.3;
+                case 'Medium'
+                    t_width=2;
+                case 'Thick'
+                    t_width=4;
+            end
+       
+            app.thresholdLine.LineWidth=t_width;  
+        end
+
+        % Selection changed function: LineStyleButtonGroup_2
+        function LineStyleButtonGroup_2SelectionChanged(app, event)
+            tresholdstyle = app.LineStyleButtonGroup_2.SelectedObject;
+            
+            switch tresholdstyle.Text
+                case 'Dashed Dotted Line'
+                    t_style= '-.';
+                case 'Dashed Line'
+                    t_style='--';
+                case 'Dotted Line'
+                    t_style= ':';
+            end
+            app.thresholdLine.LineStyle=t_style;
